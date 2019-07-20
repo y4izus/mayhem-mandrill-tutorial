@@ -56,12 +56,38 @@ async def consume(queue):
         logging.info(f'Consumed {msg}')
         await restart_host(msg)
 
+# Execute one task, then another and then finish        
+# def main():
+#     queue = asyncio.Queue()
+#     asyncio.run(publish(queue, 5))
+#     asyncio.run(consume(queue))
 
+
+# Execute one service and run forever
+# def main():
+#     queue = asyncio.Queue()
+#     loop = asyncio.get_event_loop()
+#     loop.create_task(publish(queue, 5))
+#     loop.create_task(consume(queue))
+#     loop.run_forever()
+#     loop.close()
+#     logging.info('Successfully shutdown the Mayhem service.')
+
+
+# Execute one service and run forever and show message when interrupted
 def main():
     queue = asyncio.Queue()
-    asyncio.run(publish(queue, 5))
-    asyncio.run(consume(queue))
+    loop = asyncio.get_event_loop()
 
+    try:
+        loop.create_task(publish(queue, 5))
+        loop.create_task(consume(queue))
+        loop.run_forever()
+    except KeyboardInterrupt:
+        logging.info('Process interrupted')
+    finally:
+        loop.close()
+        logging.info('Successfully shutdown the Mayhem service.')
 
 if __name__ == '__main__':
     main()
