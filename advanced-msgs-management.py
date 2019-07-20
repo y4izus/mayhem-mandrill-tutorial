@@ -70,17 +70,27 @@ async def consume(queue):
         # wait for an item from the publisher
         msg = await queue.get()
 
-        # the publisher emits None to indicate that it is done
-        if msg is None:
-            break
+        # randomly fail consuming
+        if random.randint(1, 10) == 5:
+            raise Exception(f'Could not restart {msg.hostname}')
 
         # process the msg
         logging.info(f'Consumed {msg}')
         asyncio.create_task(handle_message(msg))
 
 
-async def shutdown(signal, loop):
-    logging.info(f'Received exit signal {signal.name}...')
+def handle_exception(loop, context):
+    # context['message'] will always be there; but context['exception'] may not
+    msg = context.get('exception', context['message'])
+    logging.error(f'Caught exception: {msg}')
+    logging.info('Shutting down...')
+    asyncio.create_task(shutdown(loop))
+
+
+async def shutdown(loop, signal=None):
+    if signal:
+        logging.info(f'Received exit signal {signal.name}...')
+
     logging.info('Closing database connections')
 
     logging.info('Nacking outstanding messages')
@@ -88,7 +98,6 @@ async def shutdown(signal, loop):
     logging.info(f'Cancelling {len(tasks)} outstanding tasks')
     for task in tasks:
         task.cancel()
-    # await asyncio.gather(*tasks)
     await asyncio.gather(*tasks, return_exceptions=True)
 
     logging.info(f'Flushing metrics')
@@ -102,7 +111,9 @@ def main():
 
     for s in signals:
         loop.add_signal_handler(
-            s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
+            s, lambda s=s: asyncio.create_task(shutdown(loop, s)))
+    
+    loop.set_exception_handler(handle_exception)
 
     try:
         loop.create_task(publish(queue))
