@@ -7,7 +7,7 @@ import signal
 from dataclasses import dataclass, field
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -28,8 +28,22 @@ class PubSubMessage:
 
 async def save(msg):
     await asyncio.sleep(random.random())
+
+    if random.randint(1, 5) == 3:
+        raise SaveError(f'Could not save msg {msg}')
+
     msg.saved = True
     logging.info(f'Saved {msg}')
+
+
+async def restart_host(msg):
+    await asyncio.sleep(random.random())
+
+    if random.randint(1, 5) == 3:
+        raise RestartError(f'Could not restart {msg}')
+
+    msg.restarted = True
+    logging.info(f'Restarted {msg.hostname}')
 
 
 async def cleanup(msg):
@@ -38,16 +52,22 @@ async def cleanup(msg):
 
 
 async def handle_message(msg):
-    save_msg = save(msg)
-    restart = restart_host(msg)
-    await asyncio.gather(save_msg, restart)
-    asyncio.create_task(cleanup(msg))
+    results = await asyncio.gather(
+        restart_host(msg), save(msg), return_exceptions=True)
+    asyncio.create_task(handle_results(results, msg))
+    await cleanup(msg)
 
 
-async def restart_host(msg):
-    await asyncio.sleep(random.random())
-    msg.restarted = True
-    logging.info(f'Restarted {msg.hostname}')
+async def handle_results(results, msg):
+    for result in results:
+        if isinstance(result, SaveError):
+            logging.error(f'Saving msg {msg} failed.')
+
+        elif isinstance(result, RestartError):
+            logging.warning(f'Retrying restarting host: {msg.hostname}')
+
+        elif isinstance(result, Exception):
+            logging.error(f'Handling general error: {result}')
 
 
 async def publish(queue):
@@ -70,7 +90,6 @@ async def consume(queue):
         # wait for an item from the publisher
         msg = await queue.get()
 
-        # randomly fail consuming
         if random.randint(1, 10) == 5:
             raise Exception(f'Could not restart {msg.hostname}')
 
@@ -85,6 +104,14 @@ def handle_exception(loop, context):
     logging.error(f'Caught exception: {msg}')
     logging.info('Shutting down...')
     asyncio.create_task(shutdown(loop))
+
+
+class SaveError(Exception):
+    pass
+
+
+class RestartError(Exception):
+    pass
 
 
 async def shutdown(loop, signal=None):
@@ -108,11 +135,9 @@ def main():
     queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
     signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT, signal.SIGQUIT)
-
     for s in signals:
         loop.add_signal_handler(
-            s, lambda s=s: asyncio.create_task(shutdown(loop, s)))
-    
+            s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
     loop.set_exception_handler(handle_exception)
 
     try:
