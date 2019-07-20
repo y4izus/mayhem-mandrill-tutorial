@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 import string
+import uuid
 from dataclasses import dataclass, field
 
 
@@ -29,18 +30,35 @@ async def restart_host(msg):
     logging.info(f'Restarted {msg.hostname}')
 
 
-async def publish(queue, n):
+# Publish only n messages
+# async def publish(queue, n):
+#     choices = string.ascii_lowercase + string.digits
+#     for x in range(1, n + 1):
+#         host_id = ''.join(random.choices(choices, k=4))
+#         instance_name = f'cattle-{host_id}'
+#         msg = PubSubMessage(message_id=x, instance_name=instance_name)
+#         # publish an item
+#         await queue.put(msg)
+#         logging.info(f'Published {x} of {n} messages')
+
+#     # indicate the publisher is done
+#     await queue.put(None)
+
+
+# Publish messages forever (asynchronous)
+async def publish(queue, label):
     choices = string.ascii_lowercase + string.digits
-    for x in range(1, n + 1):
+
+    while True:
+        msg_id = str(uuid.uuid4())
         host_id = ''.join(random.choices(choices, k=4))
         instance_name = f'cattle-{host_id}'
-        msg = PubSubMessage(message_id=x, instance_name=instance_name)
+        msg = PubSubMessage(message_id=msg_id, instance_name=instance_name)
         # publish an item
-        await queue.put(msg)
-        logging.info(f'Published {x} of {n} messages')
-
-    # indicate the publisher is done
-    await queue.put(None)
+        asyncio.create_task(queue.put(msg))
+        logging.info(f'{label} >>> Published message {msg}')
+        # simulate randomness of publishing messages
+        await asyncio.sleep(random.random())
 
 
 async def consume(queue):
@@ -55,6 +73,7 @@ async def consume(queue):
         # process the msg
         logging.info(f'Consumed {msg}')
         await restart_host(msg)
+
 
 # Execute one task, then another and then finish        
 # def main():
@@ -75,19 +94,36 @@ async def consume(queue):
 
 
 # Execute one service and run forever and show message when interrupted
+# def main():
+#     queue = asyncio.Queue()
+#     loop = asyncio.get_event_loop()
+
+#     try:
+#         loop.create_task(publish(queue, 5))
+#         loop.create_task(consume(queue))
+#         loop.run_forever()
+#     except KeyboardInterrupt:
+#         logging.info('Process interrupted')
+#     finally:
+#         loop.close()
+#         logging.info('Successfully shutdown the Mayhem service.')
+
+
 def main():
     queue = asyncio.Queue()
+    queue2 = asyncio.Queue()
     loop = asyncio.get_event_loop()
 
     try:
-        loop.create_task(publish(queue, 5))
-        loop.create_task(consume(queue))
+        loop.create_task(publish(queue, 'Q1'))
+        loop.create_task(publish(queue2, 'Q2'))
         loop.run_forever()
     except KeyboardInterrupt:
         logging.info('Process interrupted')
     finally:
         loop.close()
         logging.info('Successfully shutdown the Mayhem service.')
+
 
 if __name__ == '__main__':
     main()
