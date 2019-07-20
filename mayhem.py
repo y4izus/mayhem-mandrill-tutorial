@@ -61,19 +61,31 @@ async def publish(queue, label):
         await asyncio.sleep(random.random())
 
 
+# Synchronous
+# async def consume(queue):
+#     while True:
+#         # wait for an item from the publisher
+#         msg = await queue.get()
+
+#         # the publisher emits None to indicate that it is done
+#         if msg is None:
+#             break
+
+#         # process the msg
+#         logging.info(f'Consumed {msg}')
+#         await restart_host(msg)
+
+
+# Asynchronous
 async def consume(queue):
     while True:
         # wait for an item from the publisher
         msg = await queue.get()
 
-        # the publisher emits None to indicate that it is done
-        if msg is None:
-            break
-
         # process the msg
         logging.info(f'Consumed {msg}')
-        await restart_host(msg)
-
+        asyncio.create_task(restart_host(msg))
+        
 
 # Execute one task, then another and then finish        
 # def main():
@@ -111,12 +123,12 @@ async def consume(queue):
 
 def main():
     queue = asyncio.Queue()
-    queue2 = asyncio.Queue()
     loop = asyncio.get_event_loop()
 
     try:
         loop.create_task(publish(queue, 'Q1'))
-        loop.create_task(publish(queue2, 'Q2'))
+        loop.create_task(publish(queue, 'Q2'))
+        loop.create_task(consume(queue))
         loop.run_forever()
     except KeyboardInterrupt:
         logging.info('Process interrupted')
