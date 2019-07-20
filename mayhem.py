@@ -83,9 +83,9 @@ async def consume(queue):
         msg = await queue.get()
 
         # process the msg
-        logging.info(f'Consumed {msg}')
         asyncio.create_task(restart_host(msg))
-        
+        logging.info(f'Consumed {msg}')
+
 
 # Execute one task, then another and then finish        
 # def main():
