@@ -18,9 +18,29 @@ class PubSubMessage:
     message_id: int = field(repr=False)
     hostname: str = field(repr=False, init=False)
     restarted: bool = field(repr=False, default=False)
+    saved: bool = field(repr=False, default=False)
+    ack: bool = field(repr=False, default=False)
 
     def __post_init__(self):
         self.hostname = f'{self.instance_name}.example.net'
+
+
+async def save(msg):
+    await asyncio.sleep(random.random())
+    msg.saved = True
+    logging.info(f'Saved {msg}')
+
+
+async def cleanup(msg):
+    msg.ack = True
+    logging.info(f'Done. Acked {msg}')
+
+
+async def handle_message(msg):
+    save_msg = save(msg)
+    restart = restart_host(msg)
+    await asyncio.gather(save_msg, restart)
+    asyncio.create_task(cleanup(msg))
 
 
 async def restart_host(msg):
@@ -55,7 +75,7 @@ async def consume(queue):
 
         # process the msg
         logging.info(f'Consumed {msg}')
-        asyncio.create_task(restart_host(msg))
+        asyncio.create_task(handle_message(msg))
 
 
 def main():
